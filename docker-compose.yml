@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  helper:
+    image: mpc/aggregation_server:latest
+    command: helper
+    networks:
+      fixed_ip_network:
+        ipv4_address: 200.168.0.2
+
+  master:
+    image: mpc/aggregation_server:latest
+    command: master
+    networks:
+      fixed_ip_network:
+        ipv4_address: 200.168.0.3
+
+networks:
+  fixed_ip_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 200.168.0.0/24
