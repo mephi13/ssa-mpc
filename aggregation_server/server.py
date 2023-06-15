@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify
 from uuid import uuid4 
 from subprocess import Popen, PIPE
 from requests import post
-from os import path, walk
+from os import path, walk, listdir
+from logging import getLogger, log
 
 
 app = Flask(__name__)
@@ -131,7 +132,25 @@ def handle_start_helper():
     
     print(f"starting metric {request.json['metric']}...")
 
-    return ""
+    files = [filename for filename in listdir(app.config["OUTPUT_FILE_PATH"]) 
+             if path.isfile(path.join(app.config["OUTPUT_FILE_PATH"], filename))]
+
+    if files == []:
+        return jsonify({"error": "no files to collect"}), 404
+
+    output_files = ["output_" + str(i) for i in range(len(files))]
+
+    proc = Popen(["demographicapp", "-server_ip", f'{app.config["PARTNER_SERVER_IP"]}',
+           "-port", '10000', "-party", "2", "-concurrency", "64",
+           "-input_directory", app.config["OUTPUT_FILE_PATH"],
+           "-input_filenames", f'{",".join(files)}', 
+           "-output_directory", "aggregation_output",
+           "-output_filenames", f'{",".join(output_files)}',
+           f'-{request.json["metric"]}'])
+    
+    #proc.wait(timeout=10)
+
+    return "Aggregation job started"
 
 @app.route('/collect', methods=['POST'])
 def handle_collection():
@@ -148,6 +167,12 @@ def handle_collection():
     if not request.json["metric"] in possible_metrics:
         return jsonify({"error": f'invalid metric "{request.json["metric"]}"'})
 
+    files = [filename for filename in listdir(app.config["OUTPUT_FILE_PATH"]) 
+             if path.isfile(path.join(app.config["OUTPUT_FILE_PATH"], filename))]
+
+    if files == []:
+        return jsonify({"error": "no files to collect"}), 404
+
     # start helper
     helper_json = {"metric": request.json["metric"], "token": app.config["HELPER_SERVER_TOKEN"]}
     res = post(f'http://{app.config["PARTNER_SERVER_IP"]}:{app.config["PARTNER_SERVER_PORT"]}/collecthelper', json=helper_json)   
@@ -157,10 +182,29 @@ def handle_collection():
         return jsonify({"error": "error starting helper"}), 500
     print(f"starting metric {request.json['metric']}...")
 
-    if request.json["metric"] == "average":
-        Popen(["demographicapp", "--average", "--"])
+    output_files = ["output_" + str(i) for i in range(len(files))]
 
-    return 'Hello, World!'
+    proc = Popen(["demographicapp", "-server_ip", f'127.0.0.1',
+           "-port", '10000', "-party", "1", "-concurrency", "64",
+           "-input_directory", app.config["OUTPUT_FILE_PATH"],
+           "-input_filenames", f'{",".join(files)}', 
+           "-output_directory", "aggregation_output",
+           "-output_filenames", f'{",".join(output_files)}',
+           f'-{request.json["metric"]}'])
+
+    proc.wait()
+
+    output = {}
+    for filename in output_files:
+        filepath = path.join("aggregation_output", filename)
+        with open(filepath, "r") as f:
+            for line in f:
+                key, value = line.split(":")
+                key = key.strip()
+                value = value.strip()
+                if key != "histogramResult":
+                    output[key] = output[key] + float(value) if key in output.keys() else float(value)
+    return jsonify(output), 200
 
 if __name__=="__main__":
     app.run()

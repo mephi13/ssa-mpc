@@ -34,6 +34,7 @@ RUN chmod +x config_server.sh
 RUN pip install --upgrade -r requirements.txt 
 
 EXPOSE 80
+EXPOSE 10000-20000
 
 ENTRYPOINT [ "./config_server.sh" ]
 CMD [ "helper" ]
