@@ -3,11 +3,21 @@ from uuid import uuid4
 from subprocess import Popen, PIPE
 from requests import post
 from os import path, walk, listdir
-from logging import getLogger, log
-
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 app = Flask(__name__)
 app.config.from_pyfile('config.py')
+
+print(app.config["PRIVATE_ENC_KEY"], "rb")
+with open(app.config["PRIVATE_ENC_KEY"], "rb") as key_file:
+    private_key = serialization.load_pem_private_key(
+        key_file.read(),
+        password=None,
+        backend=default_backend()
+    )
 
 unconfirmed_uploads = {}
 current_file = None
@@ -55,17 +65,44 @@ def handle_confirm_upload():
 
     if request.json["id"] in unconfirmed_uploads.keys():
         write_upload(request.json["id"])
-
-    return jsonify({"id":request.json["id"]}), 200
+        return jsonify({"id":request.json["id"]}), 200
+    
+    return jsonify({"error": "Unknown error"}), 500
 
 def write_upload(id):
     print(f"Writing id {id}...")
     upload = unconfirmed_uploads.pop(id)
-    upload = [str(upload[key]) for key in app.config["DATASTORE_FIELD_NAMES"]]    
+    upload_list = []
+    # decrypt upload
+    if app.config["ENCRYPT"]:
+        for key in app.config["DATASTORE_FIELD_NAMES"]:
+            enc = bytes.fromhex(str(upload[key]))
+            try:
+                int_measurement = int(private_key.decrypt(
+                    enc,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None)
+                ).decode())
+                assert int_measurement >= 0 and int_measurement.bit_length() <= 32
+                upload_list.append(str(int_measurement))
+            except Exception as e:
+                print(e)
+                return
+    else:
+        for key in app.config["DATASTORE_FIELD_NAMES"]:
+            try:
+                int_measurement = int(upload[key])
+                assert int_measurement >= 0 and int_measurement.bit_length() <= 32
+                upload_list.append(str(int_measurement))
+            except Exception as e:
+                print(e)
+                return
     if not check_file(current_file):
         new_file()
     with open(current_file, "a") as f:
-        f.write(id + "," + ",".join(upload) + "\n")
+        f.write(id + "," + ",".join(upload_list) + "\n")
 
 @app.route('/upload', methods=['POST'])
 def handle_upload():
@@ -88,21 +125,19 @@ def handle_upload():
             enc_measurement = request.json["measurements"][measurement]
             # decrypt measurement
             dec_measurerment = enc_measurement
-            # assert its a correct 32 bit int
-            int_measurement = int(dec_measurerment)
-            assert int_measurement >= 0 and int_measurement.bit_length() <= 32
+            # # assert its a correct 32 bit int
+            # int_measurement = (dec_measurerment)
+            # assert int_measurement >= 0 and int_measurement.bit_length() <= 32
 
-            measurements_parsed[measurement] = int_measurement
+            measurements_parsed[measurement] = dec_measurerment
         except:
             return jsonify({"error": f'Invalid measurement "{dec_measurerment}"'}), 400
-
     # if there is no id, we are the master server
     # this means we need to wait for confirmation request 
     # from helper server that they got the upload as well
     if not "id" in request.json.keys():
         id = str(uuid4())
         unconfirmed_uploads[id] = measurements_parsed
-        print(unconfirmed_uploads)
         return jsonify({"id": id}), 200
     else:
         id = request.json["id"]
@@ -110,7 +145,6 @@ def handle_upload():
         # with client as soon as possible
         unconfirmed_uploads[id] = measurements_parsed
         res = post(f'http://{app.config["PARTNER_SERVER_IP"]}:{app.config["PARTNER_SERVER_PORT"]}/confirmupload', json={"id": id, "token": app.config["HELPER_SERVER_TOKEN"]})
-
         if res.status_code == 200:
             write_upload(id)
         return jsonify({"id": id}), 200
