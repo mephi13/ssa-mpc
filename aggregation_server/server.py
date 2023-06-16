@@ -22,7 +22,7 @@ def check_file(file):
     with open(current_file, "r") as f:
         num_lines = sum(1 for _ in f)
     # +1 for the header
-    if num_lines > app.config["MAX_FILE_SIZE"] + 1:
+    if num_lines > app.config["MAX_FILE_SIZE"]:
         return False
     return True
 
@@ -197,13 +197,13 @@ def handle_collection():
     output = {}
     for filename in output_files:
         filepath = path.join("aggregation_output", filename)
+        output[filename] = {}
         with open(filepath, "r") as f:
             for line in f:
                 key, value = line.split(":")
                 key = key.strip()
                 value = value.strip()
-                if key != "histogramResult":
-                    output[key] = output[key] + float(value) if key in output.keys() else float(value)
+                output[filename][key] = value
     return jsonify(output), 200
 
 if __name__=="__main__":
