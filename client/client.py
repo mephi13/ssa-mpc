@@ -47,7 +47,7 @@ def parse_arguments():
     parser.add_argument('helper_url', type=str, help='Helper URL')
     parser.add_argument('pk_helper', type=str, help='Helper public encryption key')
     parser.add_argument('pk_master', type=str, help='Master public encryption key')
-    parser.add_argument('--noencrypt', action=argparse.BooleanOptionalAction, help='don\'t use encryption for shares', default=False)
+    parser.add_argument('--noencrypt', action="count", help='don\'t use encryption for shares', default=0)
     return parser.parse_args()
 
 def secret_sharing(data: list):
@@ -57,7 +57,7 @@ def secret_sharing(data: list):
         out1.append({})
         out2.append({})
         for k,v in d.items():
-            share1 = int.from_bytes(urandom(4)) # 32 bit number
+            share1 = int.from_bytes(urandom(4), "big") # 32 bit number
             share2 = (int(v) - share1) % 2**32
             if encryption:
                 out1[-1][k] = encrypt(public_key_master, str(share1)).hex()
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     filepath = args.data_filepath
     master_url = args.master_url
     helper_url = args.helper_url
-    encryption = not args.noencrypt
+    encryption = not bool(args.noencrypt)
     print(encryption, args.noencrypt)
     print(args.pk_master)
     print(args.pk_helper)

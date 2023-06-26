@@ -16,5 +16,5 @@ else
     exit 1
 fi
 
-flask --app aggregation_server:app run --host=0.0.0.0 --port=80 --with-threads --debugger --reload
-#gunicorn --bind 0.0.0.0:80 --log-level debug aggregation_server:app
+#flask --app aggregation_server:app run --host=0.0.0.0 --port=80 --with-threads --debugger --reload
+gunicorn --bind 0.0.0.0:80 --log-level debug aggregation_server:app -t 0 --workers 20 --preload

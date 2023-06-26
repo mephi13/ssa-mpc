@@ -12,7 +12,6 @@ RUN mkdir sitecheck
 
 COPY ./mpc_games/demographic_metrics_app/ ./demographic_metrics_app/
 COPY ./mpc_games/demographic_metrics/ ./demographic_metrics/
-COPY ./mpc_games/sitecheck/ ./sitecheck/
 COPY ./mpc_games/CMakeLists.txt ./
 
 RUN cmake . -DTHREADING=ON -DEMP_USE_RANDOM_DEVICE=ON -DCMAKE_CXX_FLAGS="-march=haswell" -DCMAKE_C_FLAGS="-march=haswell" -DCMAKE_BUILD_TYPE=Release && make -j4 demographicapp
